@@ -1,28 +1,25 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
 
-# Создаем базовый класс, от которого будут наследоваться все наши таблицы
 Base = declarative_base()
 
 
 class Game(Base):
     """Represents a video game table in the database."""
 
-    # Указываем имя таблицы в базе данных
     __tablename__ = 'games'
 
-    # Описываем колонки:
-    # primary_key=True означает, что это уникальный номер строки (ID)
+    # primary_key=True
     id = Column(Integer, primary_key=True)
 
-    # nullable=False означает, что это поле не может быть пустым
+    # nullable=False
     title = Column(String,nullable=False)
 
-    # unique=True гарантирует, что мы не добавим одну и ту же игру дважды
+    # unique=True
     app_id = Column(String, unique=True, nullable=False)
     base_price = Column(Integer, nullable=False)
 
-    # Текущая цена по умолчанию равна 0
+    # The current default price is 0
     current_price = Column(Integer, default=0)
 
     def calculate_discount_percent(self):

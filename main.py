@@ -1,41 +1,60 @@
-from api_client import fetch_game_details
-from models import Game
+from fastapi import FastAPI, HTTPException
+from requests import session
+
 from database import SessionLocal
+from models import Game
+from api_client import fetch_game_details
 
-def check_discounts():
-    """
-    Fetches games from the database, checks live prices,
-    and updates the database with new current prices.
-    """
+app = FastAPI(title= "Steam Discount Analytics API")
 
-    print("--- Steam Radar: Database Mode ---")
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to Steam Discount Analytics API!"}
 
+@app.get("/games")
+def read_all_games():
     db = SessionLocal()
+    try:
+        games = db.query(Game).all()
+        return games
+    finally:
+        db.close()
 
-    games = db.query(Game).all()
+@app.get("/games/{app_id}")
+def read_single_game(app_id: str):
+    db = SessionLocal()
+    try:
+        game = db.query(Game).filter(Game.app_id == app_id).first()
+        if not game:
+                raise HTTPException(status_code=404, detail="Game not found!")
 
-    for game in games:
-        print(f"Checking Steam store for {game.title}...")
+        return game
+    finally:
+        db.close()
 
-        live_price_uah = fetch_game_details(game.app_id)
+@app.post("/games/{app_id}/update-price")
+def update_game_price(app_id: str):
+    db = SessionLocal()
+    try:
+        game = db.query(Game).filter(Game.app_id == app_id).first()
 
-        if live_price_uah is not None:
-            game.current_price = live_price_uah
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found!")
 
-            discount_percent = game.calculate_discount_percent()
+        fresh_data = fetch_game_details(app_id)
 
-            if discount_percent > 0:
-                print(f"Sale on {game.title}! Discount: {discount_percent}%. New price: {game.current_price}₴")
-            else:
-                print(f"No discount for {game.title}! Current price: {game.current_price}₴")
-        else:
-            print(f"[!] Could not fetch price for '{game.title}'.")
+        if not fresh_data:
+            raise HTTPException(status_code=400, detail="Could not fetch data from Steam.")
 
-        print("-")
+        game.current_price = fresh_data["price"]
 
-    print("Committing changes to the database...")
-    db.commit()
-    db.close()
+        db.commit()
 
-if __name__ == "__main__":
-    check_discounts()
+        db.refresh(game)
+
+        return {
+            "message": f"Price updated successfully for {game.title}!",
+            "game": game
+        }
+    finally:
+        db.close()

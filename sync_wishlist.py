@@ -12,7 +12,6 @@ def sync_user_wishlist(steam_id):
         print("[!] No items found or profile is private")
         return
 
-    wishlist_items = wishlist_items[:5]
     db = SessionLocal()
 
     for item in wishlist_items:
@@ -30,7 +29,7 @@ def sync_user_wishlist(steam_id):
             existing_game = db.query(Game).filter(Game.app_id == app_id).first()
 
             if not existing_game:
-                # Четко указываем: title=..., app_id=...
+                # Clearly indicate: title=..., app_id=...
                 new_game = Game(title=game_title, app_id=app_id, base_price=game_price)
 
                 db.add(new_game)
