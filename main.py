@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
-from requests import session
-
+import time
+from typing import List
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from database import SessionLocal
 from models import Game
 from api_client import fetch_game_details
+from schemas import GameResponse, GameCreate
 
 app = FastAPI(title= "Steam Discount Analytics API")
 
@@ -11,7 +12,7 @@ app = FastAPI(title= "Steam Discount Analytics API")
 def read_root():
     return {"message": "Welcome to Steam Discount Analytics API!"}
 
-@app.get("/games")
+@app.get("/games", response_model=List[GameResponse])
 def read_all_games():
     db = SessionLocal()
     try:
@@ -20,7 +21,7 @@ def read_all_games():
     finally:
         db.close()
 
-@app.get("/games/{app_id}")
+@app.get("/games/{app_id}", response_model=List[GameResponse])
 def read_single_game(app_id: str):
     db = SessionLocal()
     try:
@@ -58,3 +59,60 @@ def update_game_price(app_id: str):
         }
     finally:
         db.close()
+
+@app.post("/games", response_model=GameResponse, status_code=201)
+def create_game(game_in: GameCreate):
+    """
+    Creates a new game record in the database after validating the input data.
+    Returns the newly created game with its generated ID.
+    """
+
+    db = SessionLocal()
+    try:
+        existing_game = db.query(Game).filter(Game.app_id == game_in.app_id).first()
+        if existing_game:
+            raise HTTPException(status_code=400, detail="Game with this AppID already exists.")
+
+        new_game = Game(
+            title=game_in.title,
+            app_id=game_in.app_id,
+            base_price=game_in.base_price
+            # current_price will default to 0 automatically in the DB
+        )
+
+        db.add(new_game)
+        db.commit()
+
+        db.refresh(new_game)
+
+        return new_game
+    finally:
+        db.close()
+
+# ---------------------------------------------------------
+# BACKGROUND TASK LOGIC
+# ---------------------------------------------------------
+
+def update_all_prices_task():
+    db = SessionLocal()
+    try:
+        games = db.query(Game).all()
+
+        for game in games:
+            fresh_data = fetch_game_details(game.app_id)
+
+            if fresh_data:
+                game.current_price = fresh_data["price"]
+                db.commit()
+            time.sleep(1.5)
+    finally:
+        db.close()
+
+# NEW ROUTE: Mass update using Background Tasks
+@app.post("/games/update-all")
+def update_all_games(background_tasks: BackgroundTasks):
+    background_tasks.add_task(update_all_prices_task)
+
+    return {
+        "message": "Mass update started in the background! Please check back in a few minutes."
+    }
